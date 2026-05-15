@@ -1,0 +1,25 @@
+{
+    "name": "guidance/filament-tenant-members",
+    "description": "Multi-tenant organization, member and invitation management for Laravel Filament",
+    "type": "library",
+    "license": "MIT",
+    "require": {
+        "php": "^8.3",
+        "filament/filament": "^5.0",
+        "illuminate/support": "^13.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Guidance\\FilamentTenantMembers\\": "src/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Guidance\\FilamentTenantMembers\\FilamentTenantMembersServiceProvider"
+            ]
+        }
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true
+}
