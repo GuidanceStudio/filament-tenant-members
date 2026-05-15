@@ -1,5 +1,5 @@
 {
-    "name": "guidance/filament-tenant-members",
+    "name": "guidance-studio/filament-tenant-members",
     "description": "Multi-tenant organization, member and invitation management for Laravel Filament",
     "type": "library",
     "license": "MIT",
