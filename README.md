@@ -13,7 +13,7 @@ Provides a complete member/invite system for Filament v5 multi-tenant panels, pl
 ## Installation
 
 ```bash
-composer require guidance/filament-tenant-members
+composer require guidance-studio/filament-tenant-members
 ```
 
 Run the migrations:
@@ -22,7 +22,7 @@ Run the migrations:
 php artisan migrate
 ```
 
-This creates three tables: `organizations`, `organization_user` (pivot), and `organization_invites`.
+This creates three tables (`organizations`, `organization_user` pivot, and `organization_invites`) and adds a `role` column to the existing `users` table for system-level (landlord) roles. The column defaults to the value of `default_role` in the config.
 
 ## Quick Start
 
@@ -427,6 +427,8 @@ Publishes the migration files to `database/migrations/`. The package creates thr
 - `organization_user` — pivot table with role column
 - `organization_invites` — invitation tokens, roles, and expiration
 
+A fourth migration adds a `role` column to the existing `users` table to store the system-level (landlord) role.
+
 Migrations are loaded automatically from the package, so publishing is only needed if you want to modify the table structure (e.g., add extra columns to `organizations`). If you publish, the package will skip its own copies to avoid duplicates.
 
 ## Events
@@ -449,6 +451,16 @@ Event::listen(OrganizationInviteCreated::class, function (OrganizationInviteCrea
     // $event->invite — the OrganizationInvite model
 });
 ```
+
+## Console Commands
+
+### Cleanup Expired Invites
+
+```bash
+php artisan filament-tenant-members:cleanup-invites
+```
+
+Deletes all expired, unaccepted invitations (rows where `expires_at` is in the past and `accepted_at` is `null`). Schedule it from your application's `routes/console.php` (or `app/Console/Kernel.php`) if you want it to run automatically — the package does not register a schedule itself.
 
 ## Package Structure
 
