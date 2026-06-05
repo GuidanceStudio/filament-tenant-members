@@ -118,7 +118,7 @@ class AcceptInvite extends Page
                     ->send();
 
                 $this->redirect(
-                    Filament::getPanel()->getUrl($this->invite->organization),
+                    Filament::getUrl($this->invite->organization),
                     navigate: false,
                 );
             });
