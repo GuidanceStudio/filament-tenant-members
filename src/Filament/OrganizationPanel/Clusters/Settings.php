@@ -9,4 +9,6 @@ use Filament\Support\Icons\Heroicon;
 class Settings extends Cluster
 {
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedCog6Tooth;
+
+    protected static ?int $navigationSort = 9999;
 }

@@ -23,7 +23,7 @@ class GeneralSettings extends Page
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedBuildingOffice2;
 
-    protected static ?int $navigationSort = 9999;
+    protected static ?int $navigationSort = 1;
 
     public ?array $data = [];
 
