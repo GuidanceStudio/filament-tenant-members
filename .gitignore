@@ -2,3 +2,6 @@
 /.idea/
 /.vscode/
 .DS_Store
+/.phpunit.cache
+/.phpunit.result.cache
+/composer.lock

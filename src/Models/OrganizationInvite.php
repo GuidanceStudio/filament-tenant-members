@@ -3,6 +3,7 @@
 namespace Guidance\FilamentTenantMembers\Models;
 
 use BackedEnum;
+use Guidance\FilamentTenantMembers\Concerns\HasConfigurableKeyType;
 use Guidance\FilamentTenantMembers\FilamentTenantMembers;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -13,6 +14,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 #[Fillable(['token', 'organization_id', 'user_id', 'email', 'role', 'expires_at', 'accepted_at'])]
 class OrganizationInvite extends Model
 {
+    use HasConfigurableKeyType;
+
     protected function casts(): array
     {
         return [
