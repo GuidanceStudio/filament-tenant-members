@@ -17,4 +17,13 @@ class User extends Authenticatable
     protected $table = 'users';
 
     protected $guarded = [];
+
+    /**
+     * Mirror the framework-default `hashed` cast every real consumer applies to
+     * `password`, so completePasswordSet's plaintext assignment is hashed on
+     * save (the primitive relies on this cast, never hashing itself).
+     */
+    protected $casts = [
+        'password' => 'hashed',
+    ];
 }
