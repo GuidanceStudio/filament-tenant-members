@@ -190,6 +190,9 @@ The package provides a custom registration page (`Register`) that:
 
 - Pre-fills the email field when a user arrives via an invite link.
 - Disables the email field so the user cannot change it.
+- Hides the "Already registered? Sign in" prompt for an invitee, who by definition has no account yet. It is unchanged for a plain self-serve registration.
+- Reads the invited address from the session (`pending_invite_email`) on every request, so the lock survives a page reload and a tampered Livewire request cannot register a different address — the invited email is re-asserted server-side before validation.
+- Forgets `pending_invite_email` once registration completes (or on any login), so a later self-serve registration is not locked.
 - Otherwise behaves identically to the default Filament registration page.
 
 ### Tenancy Pages

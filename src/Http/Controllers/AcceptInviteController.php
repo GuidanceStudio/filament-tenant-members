@@ -3,6 +3,7 @@
 namespace Guidance\FilamentTenantMembers\Http\Controllers;
 
 use Filament\Facades\Filament;
+use Guidance\FilamentTenantMembers\Filament\OrganizationPanel\Pages\Auth\Register;
 use Guidance\FilamentTenantMembers\FilamentTenantMembers;
 use Guidance\FilamentTenantMembers\Models\OrganizationInvite;
 use Illuminate\Http\RedirectResponse;
@@ -31,10 +32,12 @@ class AcceptInviteController
         $userModel = FilamentTenantMembers::getUserModel();
 
         if ($userModel::where('email', $invite->email)->exists()) {
+            session()->forget(Register::INVITE_EMAIL_SESSION_KEY);
+
             return redirect()->to($panel->getLoginUrl());
         }
 
-        session()->put('pending_invite_email', $invite->email);
+        session()->put(Register::INVITE_EMAIL_SESSION_KEY, $invite->email);
 
         return redirect()->to($panel->getRegistrationUrl());
     }
