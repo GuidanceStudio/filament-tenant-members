@@ -74,7 +74,8 @@ class GeneralSettings extends Page
         return [
             Action::make('save')
                 ->label('Save')
-                ->submit('save'),
+                ->submit('save')
+                ->formId('form'),
         ];
     }
 
@@ -82,11 +83,18 @@ class GeneralSettings extends Page
     {
         $data = $this->form->getState();
 
-        Filament::getTenant()->update($data);
+        $tenant = Filament::getTenant();
+        $tenant->update($data);
 
         Notification::make()
             ->title('Saved successfully.')
             ->success()
             ->send();
+
+        // The tenant is resolved from the slug in the URL and its name is shown outside this
+        // component, so reload on the (possibly new) URL instead of keeping a stale page.
+        if ($tenant->wasChanged()) {
+            $this->redirect(static::getUrl(tenant: $tenant));
+        }
     }
 }
