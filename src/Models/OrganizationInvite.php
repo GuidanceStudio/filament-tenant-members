@@ -7,6 +7,7 @@ use Carbon\CarbonInterval;
 use Guidance\FilamentTenantMembers\Concerns\HasConfigurableKeyType;
 use Guidance\FilamentTenantMembers\Enums\InvitationUnavailableReason;
 use Guidance\FilamentTenantMembers\Events\OrganizationInviteAccepted;
+use Guidance\FilamentTenantMembers\Events\OrganizationInviteDeclined;
 use Guidance\FilamentTenantMembers\Exceptions\InvitationUnavailable;
 use Guidance\FilamentTenantMembers\FilamentTenantMembers;
 use Illuminate\Contracts\Auth\Authenticatable;
@@ -54,6 +55,28 @@ class OrganizationInvite extends Model
     public function accept(Authenticatable $user): void
     {
         DB::transaction(fn () => $this->markAccepted($this->lockPendingFor($user), $user));
+    }
+
+    /**
+     * Decline the invitation on behalf of `$user`: delete the row and announce it
+     * with {@see OrganizationInviteDeclined}. Same guard and lock as {@see accept}.
+     * Revoking (a plain `delete()`) announces nothing.
+     *
+     * @throws InvitationUnavailable
+     */
+    public function decline(Authenticatable $user): void
+    {
+        DB::transaction(function () use ($user) {
+            $locked = $this->lockPendingFor($user);
+
+            $organization = $locked->organization;
+            $inviter = $locked->user;
+            $role = $locked->role instanceof BackedEnum ? $locked->role->value : $locked->role;
+
+            $locked->delete();
+
+            OrganizationInviteDeclined::dispatch($organization, $inviter, $user, $locked->email, $role);
+        });
     }
 
     /**

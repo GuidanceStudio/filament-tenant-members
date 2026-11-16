@@ -3,6 +3,7 @@
 use Carbon\CarbonInterval;
 use Guidance\FilamentTenantMembers\Enums\InvitationUnavailableReason;
 use Guidance\FilamentTenantMembers\Events\OrganizationInviteAccepted;
+use Guidance\FilamentTenantMembers\Events\OrganizationInviteDeclined;
 use Guidance\FilamentTenantMembers\Exceptions\InvitationUnavailable;
 use Guidance\FilamentTenantMembers\Models\Organization;
 use Guidance\FilamentTenantMembers\Models\OrganizationInvite;
@@ -168,5 +169,80 @@ function registerInviteAnsweringTests(): void
         OrganizationInvite::mintForUser($inviter, $org, 'user');
 
         expect($fired)->toHaveCount(0);
+    });
+
+    it('decline() deletes the invite and fires the declined event once with its payload', function () {
+        [$invite, $invitee, $inviter, $org] = answeringSeed();
+        $fired = answeringRecord(OrganizationInviteDeclined::class);
+
+        $invite->decline($invitee);
+
+        expect(OrganizationInvite::query()->whereKey($invite->getKey())->exists())->toBeFalse()
+            ->and(answeringRole($org, $invitee))->toBeNull()
+            ->and($fired)->toHaveCount(1)
+            ->and($fired[0]->organization->is($org))->toBeTrue()
+            ->and($fired[0]->inviter->is($inviter))->toBeTrue()
+            ->and($fired[0]->user->is($invitee))->toBeTrue()
+            ->and($fired[0]->email)->toBe('GRACE@example.test')
+            ->and($fired[0]->role)->toBe('admin');
+    });
+
+    it('decline() refuses with NotPending an expired, accepted or deleted invite', function (string $state) {
+        [$invite, $invitee] = answeringSeed();
+        $fired = answeringRecord(OrganizationInviteDeclined::class);
+
+        match ($state) {
+            'expired' => $invite->update(['expires_at' => now()->subMinute()]),
+            'accepted' => $invite->update(['accepted_at' => now()]),
+            'deleted' => $invite->delete(),
+        };
+
+        expect(answeringReason(fn () => $invite->decline($invitee)))->toBe(InvitationUnavailableReason::NotPending)
+            ->and(OrganizationInvite::query()->whereKey($invite->getKey())->exists())->toBe($state !== 'deleted')
+            ->and($fired)->toHaveCount(0);
+    })->with(['expired', 'accepted', 'deleted']);
+
+    it('decline() refuses with EmailMismatch another user and keeps the row', function () {
+        [$invite, , $inviter] = answeringSeed();
+        $fired = answeringRecord(OrganizationInviteDeclined::class);
+
+        expect(answeringReason(fn () => $invite->decline($inviter)))->toBe(InvitationUnavailableReason::EmailMismatch)
+            ->and(OrganizationInvite::query()->whereKey($invite->getKey())->exists())->toBeTrue()
+            ->and($fired)->toHaveCount(0);
+    });
+
+    it('accept then decline, and decline then accept: the second refuses, one event in total', function (string $first) {
+        [$invite, $invitee] = answeringSeed();
+        $accepted = answeringRecord(OrganizationInviteAccepted::class);
+        $declined = answeringRecord(OrganizationInviteDeclined::class);
+        $second = $first === 'accept' ? 'decline' : 'accept';
+
+        $invite->{$first}($invitee);
+
+        expect(answeringReason(fn () => $invite->{$second}($invitee)))->toBe(InvitationUnavailableReason::NotPending)
+            ->and(count($accepted) + count($declined))->toBe(1);
+    })->with(['accept', 'decline']);
+
+    it('a plain delete() (the revoke path) fires no declined event', function () {
+        [$invite] = answeringSeed();
+        $fired = answeringRecord(OrganizationInviteDeclined::class);
+
+        $invite->delete();
+
+        expect($fired)->toHaveCount(0);
+    });
+
+    it('the declined event survives a serialize round trip after the row is gone', function () {
+        [$invite, $invitee, $inviter, $org] = answeringSeed();
+        $fired = answeringRecord(OrganizationInviteDeclined::class);
+        $invite->decline($invitee);
+
+        $restored = unserialize(serialize($fired[0]));
+
+        expect($restored->organization->is($org))->toBeTrue()
+            ->and($restored->inviter->is($inviter))->toBeTrue()
+            ->and($restored->user->is($invitee))->toBeTrue()
+            ->and($restored->email)->toBe('GRACE@example.test')
+            ->and($restored->role)->toBe('admin');
     });
 }

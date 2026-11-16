@@ -193,7 +193,7 @@ use Guidance\FilamentTenantMembers\Enums\InvitationUnavailableReason;
 use Guidance\FilamentTenantMembers\Exceptions\InvitationUnavailable;
 
 try {
-    $invite->accept($user);
+    $invite->accept($user);   // or $invite->decline($user)
 } catch (InvitationUnavailable $e) {
     // $e->reason is InvitationUnavailableReason::NotPending or ::EmailMismatch
 }
@@ -207,6 +207,8 @@ try {
 | `EmailMismatch` | The user's email is not the invited one. |
 
 Only the first answer wins: the invite row is re-read under a lock inside a transaction, so a double click yields one success and one `NotPending`, and a single event. (SQLite ignores row locks; Postgres and MySQL honor them.)
+
+`decline()` applies the same guard and lock, then deletes the invitation and fires `OrganizationInviteDeclined`. Revoking an invitation (the **Delete** action on the invitations list, or a plain `$invite->delete()`) is unchanged and fires nothing, so the two stay distinguishable. A second answer on the same invitation (accept after decline, or the reverse) refuses with `NotPending`.
 
 `completePasswordSet()` (the admin-provisioning flow) goes through the same guard, and runs it *before* touching the password: a used or expired invitation throws `InvitationUnavailable` and leaves the password unchanged.
 
@@ -466,8 +468,9 @@ The package dispatches the following events:
 
 - `Guidance\FilamentTenantMembers\Events\OrganizationInviteCreated` — fired when an invitation is created or resent. Contains the `OrganizationInvite` model instance.
 - `Guidance\FilamentTenantMembers\Events\OrganizationInviteAccepted` — fired by `OrganizationInvite::accept()` (the `AcceptInvite` page, your own callers and `completePasswordSet()` all go through it). Contains `invite` (the accepted invitation, with `organization` and `user` — the inviter — loaded) and `user` (who accepted). It implements `ShouldDispatchAfterCommit`, so it is not fired if an enclosing transaction rolls back.
+- `Guidance\FilamentTenantMembers\Events\OrganizationInviteDeclined` — fired by `OrganizationInvite::decline()`. It does **not** carry the invite model (the row is deleted by then, so a queued listener could not restore it): it carries `organization`, `inviter` (the invite's user), `user` (who declined), `email` (string) and `role` (the role's string value). Revoking an invitation does not fire it.
 
-  In the admin-provisioning flow the invite's `user` is the invitee itself, not an inviter. A listener that notifies "the inviter" should skip `$event->invite->user_id === $event->user->getAuthIdentifier()`.
+  In the admin-provisioning flow the invite's user is the invitee itself, not an inviter. A listener that notifies "the inviter" should skip the event when the inviter is the user who answered: `$event->invite->user_id === $event->user->getAuthIdentifier()` for accepted, `$event->inviter->getKey() === $event->user->getAuthIdentifier()` for declined.
 
 The package registers two listeners internally:
 
@@ -509,7 +512,8 @@ src/
 │   └── InvitationUnavailableReason.php  # NotPending | EmailMismatch
 ├── Events/
 │   ├── OrganizationInviteCreated.php
-│   └── OrganizationInviteAccepted.php
+│   ├── OrganizationInviteAccepted.php
+│   └── OrganizationInviteDeclined.php
 ├── Exceptions/
 │   └── InvitationUnavailable.php    # Thrown when an invite cannot be answered
 ├── Console/Commands/
@@ -545,6 +549,12 @@ src/
 ├── FilamentTenantMembersAdminPlugin.php   # Admin panel plugin
 └── FilamentTenantMembersServiceProvider.php
 ```
+
+## Upgrading to 0.2
+
+`OrganizationInvite::accept()` now checks the invitation before acting. It used to accept anything it was called on; it now throws `InvitationUnavailable` (reason `NotPending` or `EmailMismatch`) when the invitation is already accepted, expired, gone, or addressed to another email. Direct callers must handle that exception. The `AcceptInvite` page already does.
+
+`accept()` and `decline()` also fire `OrganizationInviteAccepted` / `OrganizationInviteDeclined`. Change your constraint to `^0.2` and run `composer update guidance-studio/filament-tenant-members`.
 
 ## License
 

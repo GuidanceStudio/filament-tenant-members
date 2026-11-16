@@ -154,7 +154,14 @@ class AcceptInvite extends Page
                 }
 
                 $organizationName = $this->invite->organization->name;
-                $this->invite->delete();
+
+                try {
+                    $this->invite->decline(auth()->user());
+                } catch (InvitationUnavailable $e) {
+                    $this->notifyCannotRespond($e->reason);
+
+                    return;
+                }
 
                 Notification::make()
                     ->title('Invitation declined')
