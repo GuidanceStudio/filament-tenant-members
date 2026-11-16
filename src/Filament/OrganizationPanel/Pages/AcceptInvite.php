@@ -7,6 +7,8 @@ use Filament\Facades\Filament;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Filament\Panel;
+use Guidance\FilamentTenantMembers\Enums\InvitationUnavailableReason;
+use Guidance\FilamentTenantMembers\Exceptions\InvitationUnavailable;
 use Guidance\FilamentTenantMembers\Models\OrganizationInvite;
 use Illuminate\Contracts\Support\Htmlable;
 
@@ -81,10 +83,14 @@ class AcceptInvite extends Page
 
     public function getSubheading(): string|Htmlable|null
     {
-        return match ($this->error) {
-            self::ERROR_INVALID => 'This invitation is invalid or has expired.',
+        return $this->error ? self::subheadingFor($this->error) : null;
+    }
+
+    protected static function subheadingFor(string $error): string
+    {
+        return match ($error) {
             self::ERROR_EMAIL_MISMATCH => 'This invitation was sent to a different email address. Please log in with the correct account.',
-            default => null,
+            default => 'This invitation is invalid or has expired.',
         };
     }
 
@@ -109,7 +115,13 @@ class AcceptInvite extends Page
                     return;
                 }
 
-                $this->invite->accept(auth()->user());
+                try {
+                    $this->invite->accept(auth()->user());
+                } catch (InvitationUnavailable $e) {
+                    $this->notifyCannotRespond($e->reason);
+
+                    return;
+                }
 
                 Notification::make()
                     ->title('Invitation accepted')
@@ -158,11 +170,17 @@ class AcceptInvite extends Page
         return $this->invite !== null && $this->error === null;
     }
 
-    protected function notifyCannotRespond(): void
+    protected function notifyCannotRespond(?InvitationUnavailableReason $reason = null): void
     {
+        $body = match ($reason) {
+            InvitationUnavailableReason::NotPending => self::subheadingFor(self::ERROR_INVALID),
+            InvitationUnavailableReason::EmailMismatch => self::subheadingFor(self::ERROR_EMAIL_MISMATCH),
+            null => $this->getSubheading(),
+        };
+
         Notification::make()
             ->title('This invitation is no longer available.')
-            ->body($this->getSubheading())
+            ->body($body)
             ->danger()
             ->send();
     }

@@ -5,12 +5,16 @@ namespace Guidance\FilamentTenantMembers\Models;
 use BackedEnum;
 use Carbon\CarbonInterval;
 use Guidance\FilamentTenantMembers\Concerns\HasConfigurableKeyType;
+use Guidance\FilamentTenantMembers\Enums\InvitationUnavailableReason;
+use Guidance\FilamentTenantMembers\Events\OrganizationInviteAccepted;
+use Guidance\FilamentTenantMembers\Exceptions\InvitationUnavailable;
 use Guidance\FilamentTenantMembers\FilamentTenantMembers;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 #[Fillable(['token', 'organization_id', 'user_id', 'email', 'role', 'expires_at', 'accepted_at'])]
@@ -37,15 +41,57 @@ class OrganizationInvite extends Model
         return $query->where('token', $token);
     }
 
+    /**
+     * Accept the invitation on behalf of `$user`: join the organization with the
+     * invited role and announce it with {@see OrganizationInviteAccepted}.
+     *
+     * Only the first answer wins: the row is re-read under a lock, so a double click
+     * or accept-vs-decline across tabs yields one success and one refusal.
+     *
+     * @throws InvitationUnavailable  not pending (accepted, expired, gone) or the
+     *         user's email is not the invited one.
+     */
     public function accept(Authenticatable $user): void
     {
-        $this->update(['accepted_at' => now()]);
+        DB::transaction(fn () => $this->markAccepted($this->lockPendingFor($user), $user));
+    }
 
-        $this->organization->users()->syncWithoutDetaching([
+    /**
+     * Re-read this invite under a row lock and refuse unless it is still pending and
+     * addressed to `$user`. Must run inside a transaction. SQLite ignores the lock;
+     * Postgres/MySQL honor it.
+     *
+     * @throws InvitationUnavailable
+     */
+    private function lockPendingFor(Authenticatable $user): static
+    {
+        $locked = static::query()->pending()->lockForUpdate()->find($this->getKey());
+
+        if (! $locked) {
+            throw new InvitationUnavailable(InvitationUnavailableReason::NotPending);
+        }
+
+        if (! $locked->matchesUser($user)) {
+            throw new InvitationUnavailable(InvitationUnavailableReason::EmailMismatch);
+        }
+
+        return $locked;
+    }
+
+    private function markAccepted(self $locked, Authenticatable $user): void
+    {
+        $locked->update(['accepted_at' => now()]);
+
+        $locked->organization->users()->syncWithoutDetaching([
             $user->getAuthIdentifier() => [
-                'role' => $this->role instanceof BackedEnum ? $this->role->value : $this->role,
+                'role' => $locked->role instanceof BackedEnum ? $locked->role->value : $locked->role,
             ],
         ]);
+
+        $this->setRawAttributes($locked->getAttributes(), true);
+        $this->loadMissing(['organization', 'user']);
+
+        OrganizationInviteAccepted::dispatch($this, $user);
     }
 
     /**
@@ -84,9 +130,9 @@ class OrganizationInvite extends Model
 
     /**
      * Consume a targeted invite by setting the invitee's OWN password and joining
-     * them to the organization. Reuses {@see accept} for the single-use stamp +
-     * membership sync, so the same `pending()` scope makes a second consume a
-     * no-op (the caller sees the invite is no longer pending).
+     * them to the organization. Shares the guarded, locked acceptance with {@see accept}, so a second
+     * consume (or an expired link) throws {@see InvitationUnavailable} before the
+     * password is touched.
      *
      * The plaintext is assigned to the user model's `password` attribute and
      * persisted — the consumer's model is expected to hash it on assignment
@@ -102,12 +148,17 @@ class OrganizationInvite extends Model
         /** @var Authenticatable&Model $user */
         $user = $userModel::query()->where('email', $this->email)->firstOrFail();
 
-        $user->setAttribute('password', $plainPassword);
-        $user->save();
+        // Check and lock first: a used or expired invite must not change the password.
+        return DB::transaction(function () use ($user, $plainPassword) {
+            $locked = $this->lockPendingFor($user);
 
-        $this->accept($user);
+            $user->setAttribute('password', $plainPassword);
+            $user->save();
 
-        return $user;
+            $this->markAccepted($locked, $user);
+
+            return $user;
+        });
     }
 
     public function matchesUser(Authenticatable $user): bool

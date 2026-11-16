@@ -184,6 +184,32 @@ After an invitation is resent, the **Resend** button is hidden for a configurabl
 
 Invitations expire after a configurable number of days (default: 7). Expired invitations can be resent, which resets the expiration.
 
+### Responding to an invitation
+
+The rules for answering an invitation live in the model, so your own UI (for example buttons in a notification) can answer with one call instead of copying the `AcceptInvite` page's checks:
+
+```php
+use Guidance\FilamentTenantMembers\Enums\InvitationUnavailableReason;
+use Guidance\FilamentTenantMembers\Exceptions\InvitationUnavailable;
+
+try {
+    $invite->accept($user);
+} catch (InvitationUnavailable $e) {
+    // $e->reason is InvitationUnavailableReason::NotPending or ::EmailMismatch
+}
+```
+
+`accept()` joins the user to the organization with the invited role, stamps `accepted_at` and fires `OrganizationInviteAccepted`. It refuses with `InvitationUnavailable` unless the invitation is still pending (not accepted, not expired, still in the table) and its email matches the user's (case-insensitive):
+
+| Reason | Meaning |
+|---|---|
+| `NotPending` | Already accepted, expired, or gone. |
+| `EmailMismatch` | The user's email is not the invited one. |
+
+Only the first answer wins: the invite row is re-read under a lock inside a transaction, so a double click yields one success and one `NotPending`, and a single event. (SQLite ignores row locks; Postgres and MySQL honor them.)
+
+`completePasswordSet()` (the admin-provisioning flow) goes through the same guard, and runs it *before* touching the password: a used or expired invitation throws `InvitationUnavailable` and leaves the password unchanged.
+
 ### Registration Page
 
 The package provides a custom registration page (`Register`) that:
@@ -436,9 +462,12 @@ Migrations are loaded automatically from the package, so publishing is only need
 
 ## Events
 
-The package dispatches the following event:
+The package dispatches the following events:
 
 - `Guidance\FilamentTenantMembers\Events\OrganizationInviteCreated` — fired when an invitation is created or resent. Contains the `OrganizationInvite` model instance.
+- `Guidance\FilamentTenantMembers\Events\OrganizationInviteAccepted` — fired by `OrganizationInvite::accept()` (the `AcceptInvite` page, your own callers and `completePasswordSet()` all go through it). Contains `invite` (the accepted invitation, with `organization` and `user` — the inviter — loaded) and `user` (who accepted). It implements `ShouldDispatchAfterCommit`, so it is not fired if an enclosing transaction rolls back.
+
+  In the admin-provisioning flow the invite's `user` is the invitee itself, not an inviter. A listener that notifies "the inviter" should skip `$event->invite->user_id === $event->user->getAuthIdentifier()`.
 
 The package registers two listeners internally:
 
@@ -476,9 +505,13 @@ src/
 │   └── RoleEnum.php                 # Interface for custom role enums
 ├── Enums/
 │   ├── DefaultRole.php              # Built-in organization roles
-│   └── DefaultLandlordRole.php      # Built-in system roles
+│   ├── DefaultLandlordRole.php      # Built-in system roles
+│   └── InvitationUnavailableReason.php  # NotPending | EmailMismatch
 ├── Events/
-│   └── OrganizationInviteCreated.php
+│   ├── OrganizationInviteCreated.php
+│   └── OrganizationInviteAccepted.php
+├── Exceptions/
+│   └── InvitationUnavailable.php    # Thrown when an invite cannot be answered
 ├── Console/Commands/
 │   └── CleanupExpiredInvites.php    # Deletes expired, unaccepted invitations
 ├── Filament/
