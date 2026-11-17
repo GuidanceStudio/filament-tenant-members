@@ -163,7 +163,7 @@ Non-owner members see a **Leave** button on their own row in the members table. 
 The organization owner can transfer ownership to another member via the action menu. This:
 
 1. Assigns the `ownerValue()` role to the target member.
-2. Demotes the current owner to the `default_role` (e.g., User).
+2. Demotes the current owner to the `demoted_owner_role` (e.g., Admin). When that key is `null` (the default), it falls back to `default_role`, so the invitation default and the demoted owner's role can be set independently.
 
 The transfer ownership action is only visible to members whose role returns `true` from `isProtected()`.
 
@@ -261,6 +261,10 @@ return [
 
     // Default role assigned to new members via invite
     'default_role' => 'user',
+
+    // Role the previous owner gets after transferring ownership
+    // null falls back to default_role
+    'demoted_owner_role' => null,
 
     // Days until an invitation expires
     'invite_expires_days' => 7,

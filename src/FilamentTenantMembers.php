@@ -79,6 +79,11 @@ class FilamentTenantMembers
         return config('filament-tenant-members.default_role');
     }
 
+    public static function getDemotedOwnerRole(): string
+    {
+        return config('filament-tenant-members.demoted_owner_role') ?? static::getDefaultRole();
+    }
+
     public static function getInviteExpiresDays(): int
     {
         return config('filament-tenant-members.invite_expires_days', 7);

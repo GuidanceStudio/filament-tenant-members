@@ -85,7 +85,7 @@ class ListMembers extends TableComponent
                         ->color('warning')
                         ->requiresConfirmation()
                         ->modalHeading('Transfer ownership')
-                        ->modalDescription(fn ($record) => "Are you sure you want to transfer ownership to {$record->name}? You will be demoted to " . ($roleEnum::assignableOptions()[FilamentTenantMembers::getDefaultRole()] ?? FilamentTenantMembers::getDefaultRole()) . '.')
+                        ->modalDescription(fn ($record) => "Are you sure you want to transfer ownership to {$record->name}? You will be demoted to " . ($roleEnum::assignableOptions()[FilamentTenantMembers::getDemotedOwnerRole()] ?? FilamentTenantMembers::getDemotedOwnerRole()) . '.')
                         ->action(function ($record) use ($currentUserId, $roleEnum): void {
                             $tenant = Filament::getTenant();
 
@@ -99,7 +99,7 @@ class ListMembers extends TableComponent
                                 ]);
 
                                 $tenant->users()->updateExistingPivot($currentUserId, [
-                                    'role' => FilamentTenantMembers::getDefaultRole(),
+                                    'role' => FilamentTenantMembers::getDemotedOwnerRole(),
                                 ]);
                             });
 

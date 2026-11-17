@@ -18,6 +18,8 @@ return [
     'panel_id' => 'organization',
 
     'default_role' => 'user',
+    // Role the previous owner gets after transferring ownership; null falls back to default_role.
+    'demoted_owner_role' => null,
     'invite_expires_days' => 7,
     'max_invites_per_batch' => 5,
     'resend_cooldown_minutes' => 5,
